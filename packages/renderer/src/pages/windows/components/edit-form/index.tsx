@@ -1,4 +1,4 @@
-import {Form, Input, Select, Row, Col, Space, Typography} from 'antd';
+import {Form, Input, Select, Row, Col, Space, Typography, message} from 'antd';
 import AddableSelect from '/@/components/addable-select';
 import {useEffect, useState} from 'react';
 import type {DB} from '../../../../../../shared/types/db';
@@ -23,6 +23,10 @@ const WindowEditForm = ({
   const [tags, setTags] = useState<DB.Tag[]>([]);
   const [proxies, setProxies] = useState<DB.Proxy[]>([]);
   const {t} = useTranslation();
+  const [messageApi, contextHolder] = message.useMessage({
+    duration: 3,
+    top: 100,
+  });
 
   useEffect(() => {
     if (JSON.stringify(formValue) === '{}') {
@@ -61,6 +65,16 @@ const WindowEditForm = ({
     }
   };
 
+  const onRemoveGroup = async (id: number | undefined | string) => {
+    console.log('onRemoveGroup', id);
+    const res = await GroupBridge?.delete(Number(id));
+    if (res.success) {
+      await fetchGroups();
+    } else {
+      messageApi.error(res.message);
+    }
+  };
+
   const onAddTag = async (name: string) => {
     const createdIds = await TagBridge?.create({
       name,
@@ -71,6 +85,15 @@ const WindowEditForm = ({
       return true;
     } else {
       return false;
+    }
+  };
+
+  const onRemoveTag = async (id: number | undefined | string) => {
+    const res = await TagBridge?.delete(Number(id));
+    if (res.success) {
+      await fetchTags();
+    } else {
+      messageApi.error(res.message);
     }
   };
 
@@ -94,6 +117,7 @@ const WindowEditForm = ({
       onValuesChange={formChangeCallback}
       labelCol={{span: 6}}
     >
+      {contextHolder}
       <Form.Item<FieldType>
         label={t('window_edit_form_name')}
         name="name"
@@ -109,6 +133,7 @@ const WindowEditForm = ({
           options={groups}
           onAddItem={onAddGroup}
           addBtnLabel="Add Group"
+          onRemoveItem={onRemoveGroup}
         ></AddableSelect>
       </Form.Item>
 
@@ -119,9 +144,10 @@ const WindowEditForm = ({
         <AddableSelect
           mode="multiple"
           options={tags}
-          value={formValue.tags}
+          value={formValue.tags as string[]}
           onAddItem={onAddTag}
           addBtnLabel="Add Tag"
+          onRemoveItem={onRemoveTag}
         ></AddableSelect>
       </Form.Item>
 
@@ -199,7 +225,7 @@ const WindowEditForm = ({
         <Input />
       </Form.Item>
 
-      <Form.Item<FieldType>
+      {/* <Form.Item<FieldType>
         name="cookie"
         label="Cookie"
       >
@@ -209,7 +235,7 @@ const WindowEditForm = ({
             'Cookie, eg: [{"name":"O365Consumer","value":"1","domain":"outlook.live.com","path":"","httpOnly":true,"secure":true,"session":true,"expires":1744367913,"sameSite":"no_restriction"}]'
           }
         />
-      </Form.Item>
+      </Form.Item> */}
     </Form>
   );
 };

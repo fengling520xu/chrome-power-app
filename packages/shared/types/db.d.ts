@@ -5,9 +5,9 @@ export namespace DB {
     id?: number;
     profile_id?: string;
     name?: string;
-    group_id?: number;
+    group_id?: number | null;
     group_name?: string;
-    tags?: number[] | string;
+    tags?: number[] | string[] | null | string;
     remark?: string;
     opened_at?: string;
     created_at?: string;
@@ -19,7 +19,8 @@ export namespace DB {
     status?: number;
 
     ip?: string;
-    port?: number;
+    port?: number | null;
+    pid?: number | null;
     local_proxy_port?: number;
 
     proxy_id?: number | null;
@@ -53,7 +54,25 @@ export namespace DB {
   export interface Tag {
     id?: number;
     name?: string;
-    color?: strubg;
+    color?: string;
+  }
+
+  export interface Extension {
+    id?: number;
+    name: string;
+    version: string;
+    path: string;
+    windows?: number[] | string;
+    icon?: string;
+    description?: string;
+    created_at?: string;
+    updated_at?: string;
+  }
+
+  export interface WindowExtension {
+    id?: number;
+    extension_id?: number;
+    window_id?: number;
   }
 }
 

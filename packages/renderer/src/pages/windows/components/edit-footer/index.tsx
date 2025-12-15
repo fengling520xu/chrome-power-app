@@ -5,7 +5,7 @@ import type {DB, SafeAny} from '../../../../../../shared/types/db';
 import {MESSAGE_CONFIG} from '/@/constants';
 import {useState} from 'react';
 import {useNavigate} from 'react-router-dom';
-import { useTranslation } from 'react-i18next';
+import {useTranslation} from 'react-i18next';
 
 const WindowDetailFooter = ({
   currentTab,
@@ -28,6 +28,7 @@ const WindowDetailFooter = ({
   };
 
   const handleOk = () => {
+    console.log('handleOk', formValue);
     saveWindow(formValue);
   };
 
@@ -39,9 +40,7 @@ const WindowDetailFooter = ({
 
   const showMessage = (result: OperationResult) => {
     messageApi[result.success ? 'success' : 'error'](
-      result.success
-        ? `Saved successfully, will be automatically jumped after ${MESSAGE_CONFIG.duration}s`
-        : result.message,
+      result.success ? `Saved successfully` : result.message,
     ).then(() => {
       setSaving(false);
       if (result.success) {

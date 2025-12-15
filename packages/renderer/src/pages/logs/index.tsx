@@ -27,15 +27,19 @@ const Logs = () => {
       label: 'Proxy',
     },
     {
-      key: 'Api',
-      label: 'Api',
+      key: 'Service',
+      label: 'Service',
     },
+    // {
+    //   key: 'Api',
+    //   label: 'Api',
+    // },
   ];
   const [logsData, setLogsData] = React.useState<logsDataOptions[]>([]);
 
   const fetchLogs = async (logModule: 'Main' | 'Windows' | 'Proxy' | 'Api') => {
     const logs = await CommonBridge.getLogs(logModule);
-    setLogsData(logs);
+    setLogsData(logs.reverse());
   };
 
   useEffect(() => {
@@ -50,13 +54,11 @@ const Logs = () => {
         bordered={false}
       >
         <Tabs
-          onChange={(key: string) =>
-            fetchLogs(key as 'Main' | 'Windows' | 'Proxy' | 'Api')
-          }
+          onChange={(key: string) => fetchLogs(key as 'Main' | 'Windows' | 'Proxy' | 'Api')}
           size="small"
           items={items}
         />
-        <aside className="bg-sky-950 text-white p-6 rounded-lg w-full log-container font-mono">
+        <aside className="log-aside text-white p-6 rounded-lg w-full log-container font-mono">
           <div className="flex justify-between items-center">
             <div className="flex space-x-2 text-red-500">
               <div className="w-3 h-3 rounded-full bg-red-500" />
@@ -67,13 +69,12 @@ const Logs = () => {
           <div className="mt-4">
             {logsData.map((logs, logsIndex) => {
               const reversedLogs = [...logs.content].reverse();
-              console.log(reversedLogs);
               return reversedLogs.map((log, index) => {
                 if (log.level === 'error') {
                   return (
                     <p
                       key={`${logs.name}-${logsIndex}-${index}`}
-                      className="text-red-400"
+                      className="text-amber-400"
                     >
                       {log.message}
                     </p>

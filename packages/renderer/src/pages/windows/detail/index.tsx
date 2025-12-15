@@ -14,7 +14,6 @@ import {useTranslation} from 'react-i18next';
 const WindowDetailTabs = ({
   formValue,
   onChange,
-  fingerprints,
   formValueChangeCallback,
 }: {
   formValue: DB.Window;
@@ -36,7 +35,7 @@ const WindowDetailTabs = ({
             formValue: formValue,
             formChangeCallback: formValueChangeCallback,
           })}
-          {FingerprintInfo({fingerprints})}
+          {/* {FingerprintInfo({fingerprints})} */}
         </div>
       ),
     },

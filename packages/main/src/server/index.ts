@@ -1,5 +1,5 @@
-import type { Express } from 'express';
-import { type Server } from 'http';
+import type {Express} from 'express';
+import {type Server} from 'http';
 import express from 'express';
 import cors from 'cors';
 import IPRouter from './routes/ip';
@@ -19,11 +19,24 @@ app.use('/profiles', ProfilesRouter);
 app.use('/proxy', ProxyRouter);
 
 app.get('/status', async (req, res) => {
-
   res.send({
     status: 'ok',
     port,
   });
+});
+
+// 添加全局错误处理
+app.use((err: Error, req: express.Request, res: express.Response, next: express.NextFunction) => {
+  console.error('Express error:', err);
+  if (!res.headersSent) {
+    res.status(500).json({error: 'Internal server error'});
+  }
+  next(err);
+});
+
+// 处理未捕获的 Promise 拒绝
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
 const server: Server = app
@@ -52,3 +65,9 @@ export const getPort = () => port;
 export const getOrigin = () => `http://localhost:${port}`;
 
 // ... 其他的 Express 配置和路由 ...
+
+export function createServer() {
+  // ... existing code ...
+  // 移除任何使用 getNativeAddon 的代码
+  // ... existing code ...
+}

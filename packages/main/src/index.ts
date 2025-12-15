@@ -6,7 +6,6 @@ import {db, initializeDatabase} from './db';
 import {initServices} from './services';
 import {createLogger} from '../../shared/utils/logger';
 import {MAIN_LOGGER_LABEL} from './constants';
-import {extractChromeBin} from './utils/extract';
 import './server/index';
 
 const logger = createLogger(MAIN_LOGGER_LABEL);
@@ -46,12 +45,33 @@ app.on('activate', restoreOrCreateWindow);
 app
   .whenReady()
   .then(async () => {
+    // Register global shortcuts
     globalShortcut.register('CommandOrControl+Shift+I', () => {
       const win = BrowserWindow.getFocusedWindow();
       if (win) {
         win.webContents.toggleDevTools();
       }
     });
+
+    // Register sync control shortcuts (not supported on macOS)
+    if (platform !== 'darwin') {
+      globalShortcut.register('CommandOrControl+Alt+S', () => {
+        logger.info('Global shortcut: Start sync (Ctrl+Alt+S)');
+        const allWindows = BrowserWindow.getAllWindows();
+        allWindows.forEach(win => {
+          win.webContents.send('sync-shortcut-start');
+        });
+      });
+
+      globalShortcut.register('CommandOrControl+Alt+D', () => {
+        logger.info('Global shortcut: Stop sync (Ctrl+Alt+D)');
+        const allWindows = BrowserWindow.getAllWindows();
+        allWindows.forEach(win => {
+          win.webContents.send('sync-shortcut-stop');
+        });
+      });
+    }
+
     try {
       await initializeDatabase();
     } catch (error) {
@@ -60,16 +80,16 @@ app
     }
     await initServices();
     await restoreOrCreateWindow();
-    if (!import.meta.env.DEV) {
-      const {result, error, exist} = await extractChromeBin();
-      if (result) {
-        if (!exist) {
-          logger.info('Extracted Chrome-bin.zip');
-        }
-      } else {
-        logger.error('Failed extract Chrome-bin.zip, try to manually extract it', error);
-      }
-    }
+    // if (!import.meta.env.DEV) {
+    //   const {result, error, exist} = await extractChromeBin();
+    //   if (result) {
+    //     if (!exist) {
+    //       logger.info('Extracted Chrome-bin.zip');
+    //     }
+    //   } else {
+    //     logger.error('Failed extract Chrome-bin.zip, try to manually extract it', error);
+    //   }
+    // }
   })
   .catch(e => logger.error('Failed create window:', e));
 
@@ -119,6 +139,20 @@ if (import.meta.env.PROD) {
     .catch(e => console.error('Failed check and install updates:', e));
 }
 
+app.on('will-quit', () => {
+  // Unregister all global shortcuts
+  globalShortcut.unregisterAll();
+});
+
 app.on('before-quit', async () => {
   await db.destroy();
+});
+
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught exception:', error);
+});
+
+
+process.on('unhandledRejection', (reason) => {
+  logger.error('Unhandled rejection:', reason);
 });

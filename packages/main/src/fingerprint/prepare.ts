@@ -3,7 +3,7 @@ import type {DB, SafeAny} from '../../../shared/types/db';
 import type {AxiosError} from 'axios';
 import {createLogger, getRequestProxy} from '../../../shared/utils/index';
 import api from '../../../shared/api/api';
-import {API_LOGGER_LABEL} from '../constants';
+import {PROXY_LOGGER_LABEL} from '../constants';
 import {HttpProxyAgent} from 'http-proxy-agent';
 import {HttpsProxyAgent} from 'https-proxy-agent';
 import {SocksProxyAgent} from 'socks-proxy-agent';
@@ -13,11 +13,78 @@ import {db} from '../db';
 import {getOrigin} from '../server';
 import {bridgeMessageToUI} from '../mainWindow';
 import type {AxiosProxyConfig} from 'axios';
+import { exec } from 'child_process';
+import path from 'path';
+import fs from 'fs';
+import os from 'os';
 
-const logger = createLogger(API_LOGGER_LABEL);
+const logger = createLogger(PROXY_LOGGER_LABEL);
+
+export async function createShortcutWithIcon(exePath: string, args: string[], iconPath: string, shortcutPath: string) {
+  try {
+    const shortcutDir = path.dirname(shortcutPath);
+    
+    // 确保目录存在
+    if (!fs.existsSync(shortcutDir)) {
+      fs.mkdirSync(shortcutDir, { recursive: true });
+    }
+    
+    // PowerShell 脚本创建快捷方式
+    const escapedArgs = args.map(arg => arg.replace(/"/g, '`"')).join(' ');
+    const psScript = `
+      $WshShell = New-Object -ComObject WScript.Shell
+      $Shortcut = $WshShell.CreateShortcut("${shortcutPath.replace(/\\/g, '\\\\')}")
+      $Shortcut.TargetPath = "${exePath.replace(/\\/g, '\\\\')}"
+      $Shortcut.Arguments = "${escapedArgs}"
+      $Shortcut.IconLocation = "${iconPath.replace(/\\/g, '\\\\')}"
+      $Shortcut.WorkingDirectory = "${path.dirname(exePath).replace(/\\/g, '\\\\')}"
+      
+      # 添加这行来设置快捷方式为管理员权限运行
+      $bytes = [System.IO.File]::ReadAllBytes("${shortcutPath.replace(/\\/g, '\\\\')}")
+      $bytes[0x15] = $bytes[0x15] -bor 0x20 # 设置管理员权限标志
+      [System.IO.File]::WriteAllBytes("${shortcutPath.replace(/\\/g, '\\\\')}", $bytes)
+      
+      $Shortcut.Save()
+      
+      # 验证文件是否创建成功
+      if (Test-Path "${shortcutPath.replace(/\\/g, '\\\\')}") {
+        Write-Output "快捷方式创建成功"
+      } else {
+        Write-Error "快捷方式创建失败"
+        exit 1
+      }
+    `;
+    console.log(psScript);
+    // 将脚本写入临时文件以避免命令行长度限制
+    const tempScriptPath = path.join(os.tmpdir(), `create_shortcut_${Date.now()}.ps1`);
+    fs.writeFileSync(tempScriptPath, psScript);
+    
+    return new Promise((resolve, reject) => {
+      exec(`powershell -ExecutionPolicy Bypass -File "${tempScriptPath}"`, (error, stdout, stderr) => {
+        // 清理临时脚本文件
+        try { fs.unlinkSync(tempScriptPath); } catch (e) { /* 忽略删除失败 */ }
+        
+        if (error) {
+          logger.error(`创建快捷方式失败: ${stderr}`);
+          reject(error);
+        } else {
+          logger.info(`创建快捷方式成功: ${shortcutPath}`);
+          resolve(shortcutPath);
+        }
+      });
+    });
+  } catch (error) {
+    logger.error(`创建快捷方式异常: ${error}`);
+    throw error;
+  }
+}
 
 const getRealIP = async (proxy: DB.Proxy) => {
-  let agent: SocksProxyAgent | HttpProxyAgent<`http://${string}:${string}`> | HttpsProxyAgent<`http://${string}:${string}`> | undefined = undefined;
+  let agent:
+    | SocksProxyAgent
+    | HttpProxyAgent<`http://${string}:${string}`>
+    | HttpsProxyAgent<`http://${string}:${string}`>
+    | undefined = undefined;
   let requestProxy: AxiosProxyConfig | undefined = undefined;
   if (proxy.proxy_type?.toLowerCase() === 'socks5') {
     const agentInfo = getAgent(proxy);
@@ -33,17 +100,28 @@ const getRealIP = async (proxy: DB.Proxy) => {
         timeout: 5_000,
         httpAgent: agent,
         httpsAgent: agent,
+        validateStatus: function (status) {
+          return status >= 200 && status < 300;
+        },
+        maxRedirects: 5,
       });
-      return url.includes('ip-api.com') ? data.query : data.ip;
+      return data.ip;
     } catch (error) {
-      throw new Error(`Failed to fetch IP from ${url}: ${error}`);
+      if (axios.isAxiosError(error)) {
+        if (error.code === 'ECONNRESET') {
+          logger.error(`Connection reset by peer: ${url}`);
+        } else {
+          logger.error(`Network error: ${error.message}`);
+        }
+      }
+      throw error;
     }
   };
 
   try {
     return await Promise.race([
-      makeRequest('http://ip-api.com/json/?fields=61439', requestProxy),
-      makeRequest('https://api64.ipify.org?format=json', requestProxy),
+      makeRequest('https://ipinfo.io/json', requestProxy),
+      makeRequest('https://api.ipify.org?format=json', requestProxy),
     ]);
   } catch (error) {
     bridgeMessageToUI({
@@ -66,11 +144,12 @@ export const getProxyInfo = async (proxy: DB.Proxy) => {
     try {
       const res = await api.get(getOrigin() + `/ip/${proxy.ip_checker || 'ip2location'}`, {
         params: params,
+        timeout: 2000,
       });
       return res.data;
     } catch (error) {
       attempts++;
-      logger.error(error);
+      logger.error('| Prepare | getProxyInfo | error:', error);
       if (attempts === maxAttempts) {
         logger.error(
           '| Prepare | getProxyInfo | error:',
@@ -123,7 +202,11 @@ export async function testProxy(proxy: DB.Proxy) {
     connectivity: {name: string; elapsedTime: number; status: string; reason?: string}[];
   } = {connectivity: []};
 
-  let agent: SocksProxyAgent | HttpProxyAgent<`http://${string}:${string}`> | HttpsProxyAgent<`http://${string}:${string}`> | undefined = undefined;
+  let agent:
+    | SocksProxyAgent
+    | HttpProxyAgent<`http://${string}:${string}`>
+    | HttpsProxyAgent<`http://${string}:${string}`>
+    | undefined = undefined;
   let requestProxy: AxiosProxyConfig | undefined = undefined;
   if (proxy.proxy_type?.toLowerCase() === 'socks5') {
     const agentInfo = getAgent(proxy);
@@ -141,7 +224,10 @@ export async function testProxy(proxy: DB.Proxy) {
     const startTime = Date.now();
     try {
       const response = await axios.get(pin.url, {
-        proxy: proxy.proxy && proxy.proxy_type?.toLocaleLowerCase() !== 'socks5' ? requestProxy : undefined,
+        proxy:
+          proxy.proxy && proxy.proxy_type?.toLocaleLowerCase() !== 'socks5'
+            ? requestProxy
+            : undefined,
         timeout: 5_000,
         httpAgent: agent,
         httpsAgent: agent,
@@ -163,15 +249,23 @@ export async function testProxy(proxy: DB.Proxy) {
         });
       }
     } catch (error) {
-      logger.error(`ping ${pin.name} failed:`, (error as AxiosError)?.message);
       const endTime = Date.now();
       const elapsedTime = endTime - startTime;
-      result.connectivity.push({
-        name: pin.n,
-        status: 'failed',
-        reason: (error as AxiosError)?.message,
-        elapsedTime: elapsedTime,
-      });
+      if (pin.n === 'X' && (error as AxiosError)?.response?.status === 400) {
+        result.connectivity.push({
+          name: pin.n,
+          status: 'connected',
+          elapsedTime: elapsedTime,
+        });
+      } else {
+        logger.error(`ping ${pin.name} failed:`, (error as AxiosError)?.message);
+        result.connectivity.push({
+          name: pin.n,
+          status: 'failed',
+          reason: (error as AxiosError)?.message,
+          elapsedTime: elapsedTime,
+        });
+      }
     }
   }
   if (proxy.id) {
